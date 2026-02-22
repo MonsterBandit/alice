@@ -7,3 +7,42 @@ services:
     restart: always
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - alice-mariadb
+      - alice-redis
+      - alice-qdrant
+
+  alice-mariadb:
+    container_name: alice-mariadb
+    image: mariadb:11
+    ports:
+      - "3306:3306"
+    restart: always
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+    volumes:
+      - alice-mariadb-data:/var/lib/mysql
+
+  alice-redis:
+    container_name: alice-redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: always
+    volumes:
+      - alice-redis-data:/data
+
+  alice-qdrant:
+    container_name: alice-qdrant
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    restart: always
+    volumes:
+      - alice-qdrant-storage:/qdrant/storage
+
+volumes:
+  alice-mariadb-data:
+  alice-redis-data:
+  alice-qdrant-storage:
