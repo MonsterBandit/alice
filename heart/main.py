@@ -1,6 +1,8 @@
 import os
 import json
 import redis
+import pymysql
+import pymysql.cursors
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -19,16 +21,43 @@ CONTEXT_WINDOW = 10
 
 redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
+mariadb_connection: pymysql.connections.Connection = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_client, anthropic_client
+    global redis_client, anthropic_client, mariadb_connection
+
     redis_client = redis.Redis(host="alice-redis", port=6379, decode_responses=True)
     redis_client.ping()
+
     anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    mariadb_connection = pymysql.connect(
+        host="alice-mariadb",
+        port=3306,
+        user="root",
+        password=os.environ.get("MARIADB_ROOT_PASSWORD"),
+        database="alice",
+        cursorclass=pymysql.cursors.DictCursor,
+        autocommit=True,
+    )
+
+    with mariadb_connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                role VARCHAR(50) NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
     yield
+
     redis_client.close()
+    mariadb_connection.close()
 
 
 app = FastAPI(title="Alice - Heart", lifespan=lifespan)
@@ -44,6 +73,14 @@ class ChatResponse(BaseModel):
     user_id: str
 
 
+class HistoryEntry(BaseModel):
+    id: int
+    user_id: str
+    role: str
+    content: str
+    timestamp: str
+
+
 def get_history_key(user_id: str) -> str:
     return f"alice:history:{user_id}"
 
@@ -55,6 +92,7 @@ def load_history(user_id: str) -> list:
 
 
 def save_exchange(user_id: str, user_message: str, assistant_message: str):
+    # Save to Redis (fast session layer)
     key = get_history_key(user_id)
     user_entry = json.dumps({"role": "user", "content": user_message})
     assistant_entry = json.dumps({"role": "assistant", "content": assistant_message})
@@ -62,6 +100,20 @@ def save_exchange(user_id: str, user_message: str, assistant_message: str):
     pipe.rpush(key, user_entry, assistant_entry)
     pipe.ltrim(key, -MAX_HISTORY, -1)
     pipe.execute()
+
+    # Save to MariaDB (permanent record)
+    save_exchange_to_db(user_id, user_message, assistant_message)
+
+
+def save_exchange_to_db(user_id: str, user_message: str, assistant_message: str):
+    with mariadb_connection.cursor() as cursor:
+        cursor.executemany(
+            "INSERT INTO conversations (user_id, role, content) VALUES (%s, %s, %s)",
+            [
+                (user_id, "user", user_message),
+                (user_id, "assistant", assistant_message),
+            ],
+        )
 
 
 @app.get("/health")
@@ -86,5 +138,28 @@ def chat(request: ChatRequest):
         save_exchange(request.user_id, request.message, reply)
 
         return ChatResponse(response=reply, user_id=request.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/history/{user_id}", response_model=list[HistoryEntry])
+def get_history(user_id: str):
+    try:
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, user_id, role, content,
+                       CAST(timestamp AS CHAR) AS timestamp
+                FROM conversations
+                WHERE user_id = %s
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 50
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        # Return in chronological order
+        rows.reverse()
+        return rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
