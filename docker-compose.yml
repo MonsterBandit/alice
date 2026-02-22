@@ -1,0 +1,8 @@
+services:
+  alice-heart:
+    build: ./heart
+    ports:
+      - "8000:8000"
+    restart: always
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
