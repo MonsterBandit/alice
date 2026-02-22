@@ -1,1 +1,2 @@
-# Alice
+# alice
+Life OS Personal Assistant
