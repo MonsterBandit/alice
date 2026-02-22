@@ -1,5 +1,6 @@
 services:
   alice-heart:
+    container_name: alice
     build: ./heart
     ports:
       - "8000:8000"
