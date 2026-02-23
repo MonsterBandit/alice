@@ -41,10 +41,18 @@ MAX_AGENT_ITERATIONS = 10
 JWT_SECRET = os.environ.get("ALICE_JWT_SECRET", "dev-secret")
 ADMIN_PASSWORD = os.environ.get("ALICE_ADMIN_PASSWORD", "changeme")
 
+# Firefly III integration
+FIREFLY_URL = os.environ.get("FIREFLY_URL", "")
+FIREFLY_TOKEN = os.environ.get("FIREFLY_TOKEN", "")
+
 TOOL_KEYWORDS = [
     "read", "file", "search", "list", "tree", "run", "bash", "fetch",
     "find", "grep", "write", "create", "tool", "look", "check",
     "show me", "what is in", "what's in", "open",
+    # Finance keywords
+    "account", "transaction", "budget", "balance", "spend", "spent",
+    "transfer", "deposit", "withdrawal", "finance", "money", "bank",
+    "rule", "category",
 ]
 
 redis_client: redis.Redis = None
@@ -124,6 +132,11 @@ async def lifespan(app: FastAPI):
                 used TINYINT DEFAULT 0
             )
         """)
+
+    if FIREFLY_URL:
+        print(f"[Alice] Firefly III integration enabled: {FIREFLY_URL}")
+    else:
+        print("[Alice] Firefly III integration disabled (FIREFLY_URL not set).")
 
     yield
 
