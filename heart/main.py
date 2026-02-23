@@ -1,11 +1,16 @@
 import os
 import sys
 import json
+import uuid
 import redis
 import pymysql
 import pymysql.cursors
+import jwt
+import bcrypt
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import anthropic
 
@@ -30,6 +35,9 @@ You are Alice. There is only one of you, and you belong to this household."""
 
 MAX_HISTORY = 20
 CONTEXT_WINDOW = 10
+
+JWT_SECRET = os.environ.get("ALICE_JWT_SECRET", "dev-secret")
+ADMIN_PASSWORD = os.environ.get("ALICE_ADMIN_PASSWORD", "changeme")
 
 redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
@@ -65,6 +73,24 @@ async def lifespan(app: FastAPI):
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR(36) PRIMARY KEY,
+                name VARCHAR(255),
+                email VARCHAR(255) UNIQUE,
+                password_hash VARCHAR(255),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invites (
+                token VARCHAR(64) PRIMARY KEY,
+                email VARCHAR(255),
+                created_by VARCHAR(36),
+                expires_at DATETIME,
+                used TINYINT DEFAULT 0
+            )
+        """)
 
     yield
 
@@ -75,12 +101,39 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Alice - Heart", lifespan=lifespan)
 
 # ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+def create_token(user_id: str, name: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "name": name,
+        "exp": datetime.now(timezone.utc).timestamp() + 86400,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+
+
+security = HTTPBearer()
+
+
+def require_auth(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    try:
+        return decode_token(credentials.credentials)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+# ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
 
 class ChatRequest(BaseModel):
     message: str
     user_id: str
+    conversation_id: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -109,6 +162,30 @@ class SearchResponse(BaseModel):
     failure_class: str | None = None
     failure_message: str | None = None
     latency_ms: float
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    user_id: str
+    name: str
+
+
+class InviteAcceptRequest(BaseModel):
+    token: str
+    name: str
+    email: str
+    password: str
+
+
+class ConversationEntry(BaseModel):
+    id: str
+    title: str
+    updated_at: str
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -225,5 +302,135 @@ def tools_search(request: SearchRequest):
             failure_message=result.failure_message,
             latency_ms=result.latency_ms,
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Auth routes
+# Note: nginx strips the /api prefix before forwarding to this service,
+# so these are registered without it.
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/login", response_model=LoginResponse)
+def login(request: LoginRequest):
+    try:
+        # Built-in admin account
+        if request.email == "tim@alice.local":
+            if request.password != ADMIN_PASSWORD:
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+            return LoginResponse(
+                token=create_token("admin", "Tim"),
+                user_id="admin",
+                name="Tim",
+            )
+
+        # Regular DB user
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, email, password_hash FROM users WHERE email = %s",
+                (request.email,),
+            )
+            user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        password_matches = bcrypt.checkpw(
+            request.password.encode("utf-8"),
+            user["password_hash"].encode("utf-8"),
+        )
+        if not password_matches:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        return LoginResponse(
+            token=create_token(user["id"], user["name"]),
+            user_id=user["id"],
+            name=user["name"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/refresh", response_model=LoginResponse)
+def refresh_token(claims: dict = Depends(require_auth)):
+    try:
+        user_id = claims["user_id"]
+        name = claims["name"]
+        return LoginResponse(
+            token=create_token(user_id, name),
+            user_id=user_id,
+            name=name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/invite/accept", response_model=LoginResponse)
+def invite_accept(request: InviteAcceptRequest):
+    try:
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT token, email, expires_at, used FROM invites WHERE token = %s",
+                (request.token,),
+            )
+            invite = cursor.fetchone()
+
+        if not invite:
+            raise HTTPException(status_code=400, detail="Invalid invite token")
+        if invite["used"]:
+            raise HTTPException(status_code=400, detail="Invite token already used")
+        if invite["expires_at"] and datetime.now(timezone.utc) > invite["expires_at"].replace(tzinfo=timezone.utc):
+            raise HTTPException(status_code=400, detail="Invite token has expired")
+
+        password_hash = bcrypt.hashpw(
+            request.password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        new_id = str(uuid.uuid4())
+
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO users (id, name, email, password_hash) VALUES (%s, %s, %s, %s)",
+                (new_id, request.name, request.email, password_hash),
+            )
+            cursor.execute(
+                "UPDATE invites SET used = 1 WHERE token = %s",
+                (request.token,),
+            )
+
+        return LoginResponse(
+            token=create_token(new_id, request.name),
+            user_id=new_id,
+            name=request.name,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/conversations", response_model=list[ConversationEntry])
+def list_conversations(claims: dict = Depends(require_auth)):
+    try:
+        user_id = claims["user_id"]
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    CAST(MIN(id) AS CHAR) AS id,
+                    LEFT(MIN(CASE WHEN role = 'user' THEN content END), 50) AS title,
+                    CAST(MAX(timestamp) AS CHAR) AS updated_at
+                FROM conversations
+                WHERE user_id = %s
+                GROUP BY DATE(timestamp), user_id
+                ORDER BY updated_at DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
