@@ -32,12 +32,14 @@ export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSide
     }
   }
 
-  // Auto-resize textarea
+  // Auto-resize textarea: single line by default, grows with content
   useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
+    // Reset to auto so shrinking works correctly
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'
+    const newHeight = Math.min(Math.max(ta.scrollHeight, 44), 120)
+    ta.style.height = newHeight + 'px'
   }, [input])
 
   const isEmpty = messages.length === 0
@@ -78,7 +80,7 @@ export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSide
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message Alice… (Enter to send, Shift+Enter for newline)"
+            placeholder="Message Alice…"
             rows={1}
             disabled={sending}
           />

@@ -110,13 +110,20 @@
   font-family: inherit;
   resize: none;
   line-height: 1.5;
-  max-height: 180px;
+  min-height: 44px;
+  max-height: 120px;
   overflow-y: auto;
   padding: 0.25rem 0;
+  /* Vertically center single-line text within the min-height */
+  display: flex;
+  align-items: center;
 }
 
 .textarea::placeholder {
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .textarea::-webkit-scrollbar {
@@ -159,4 +166,24 @@
   font-size: 0.72rem;
   text-align: center;
   margin: 0.5rem 0 0;
+}
+
+/* Mobile adjustments */
+@media (max-width: 767px) {
+  .topBar {
+    padding: 0.65rem 0.85rem;
+  }
+
+  /* Always show the menu button on mobile so user can open the sidebar */
+  .menuBtn {
+    display: flex;
+  }
+
+  .inputArea {
+    padding: 0.5rem 0.75rem 0.75rem;
+  }
+
+  .textarea {
+    font-size: 1rem; /* prevent iOS zoom on focus (needs >= 16px or explicit) */
+  }
 }

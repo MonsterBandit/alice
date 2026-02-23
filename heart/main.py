@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import uuid
+import time
 import redis
 import pymysql
 import pymysql.cursors
@@ -228,9 +229,50 @@ def get_history_key(user_id: str) -> str:
 
 
 def load_history(user_id: str) -> list:
+    """Load recent conversation history for a user.
+
+    Checks Redis first. If Redis is empty (e.g. new device / expired cache),
+    falls back to the last CONTEXT_WINDOW messages from MariaDB and
+    re-populates Redis so subsequent requests are fast.
+    """
     key = get_history_key(user_id)
     raw_messages = redis_client.lrange(key, -CONTEXT_WINDOW, -1)
-    return [json.loads(m) for m in raw_messages]
+
+    if raw_messages:
+        return [json.loads(m) for m in raw_messages]
+
+    # Redis is empty — seed from MariaDB
+    try:
+        with mariadb_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT role, content
+                FROM (
+                    SELECT id, role, content, timestamp
+                    FROM conversations
+                    WHERE user_id = %s
+                    ORDER BY timestamp DESC, id DESC
+                    LIMIT %s
+                ) sub
+                ORDER BY id ASC
+                """,
+                (user_id, CONTEXT_WINDOW),
+            )
+            rows = cursor.fetchall()
+    except Exception:
+        rows = []
+
+    if not rows:
+        return []
+
+    # Populate Redis from DB rows
+    pipe = redis_client.pipeline()
+    for row in rows:
+        pipe.rpush(key, json.dumps({"role": row["role"], "content": row["content"]}))
+    pipe.ltrim(key, -MAX_HISTORY, -1)
+    pipe.execute()
+
+    return [{"role": row["role"], "content": row["content"]} for row in rows]
 
 
 def save_exchange(user_id: str, user_message: str, assistant_message: str):
@@ -264,6 +306,47 @@ def needs_tools(message: str) -> bool:
     return any(keyword in lowered for keyword in TOOL_KEYWORDS)
 
 # ---------------------------------------------------------------------------
+# Anthropic API call with retry/backoff
+# ---------------------------------------------------------------------------
+
+def _call_anthropic_with_retry(*, model: str, max_tokens: int, system: str, tools: list, messages: list):
+    """Call anthropic_client.messages.create with retry logic.
+
+    Retries up to 3 times:
+      - anthropic.RateLimitError  → wait 60 seconds then retry
+      - anthropic.APIStatusError with status 529 → wait 30 seconds then retry
+      - Any other exception → raise immediately
+    """
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            kwargs = dict(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+            )
+            if tools:
+                kwargs["tools"] = tools
+            return anthropic_client.messages.create(**kwargs)
+        except anthropic.RateLimitError as e:
+            if attempt < max_retries - 1:
+                wait = 60
+                print(f"[Alice] RateLimitError on attempt {attempt + 1}/{max_retries}. Waiting {wait}s before retry…")
+                time.sleep(wait)
+            else:
+                print(f"[Alice] RateLimitError on final attempt {attempt + 1}/{max_retries}. Raising.")
+                raise
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529 and attempt < max_retries - 1:
+                wait = 30
+                print(f"[Alice] APIStatusError 529 (overloaded) on attempt {attempt + 1}/{max_retries}. Waiting {wait}s before retry…")
+                time.sleep(wait)
+            else:
+                print(f"[Alice] APIStatusError {e.status_code} on attempt {attempt + 1}/{max_retries}. Raising.")
+                raise
+
+# ---------------------------------------------------------------------------
 # Agentic loop helper
 # ---------------------------------------------------------------------------
 
@@ -288,7 +371,7 @@ def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True
     tools = anthropic_tools if (use_tools and anthropic_tools) else []
 
     for _iteration in range(MAX_AGENT_ITERATIONS):
-        result = anthropic_client.messages.create(
+        result = _call_anthropic_with_retry(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
@@ -349,10 +432,11 @@ def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True
         messages.append({"role": "user", "content": tool_results})
 
     # If we exhausted iterations, make one final call without tools to get a text reply
-    final_result = anthropic_client.messages.create(
+    final_result = _call_anthropic_with_retry(
         model="claude-sonnet-4-6",
         max_tokens=1024,
         system=SYSTEM_PROMPT,
+        tools=[],
         messages=messages,
     )
     for block in final_result.content:

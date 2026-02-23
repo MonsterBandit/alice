@@ -7,6 +7,9 @@
   overflow: hidden;
   flex-shrink: 0;
   height: 100vh;
+  /* Desktop: part of the normal flow */
+  position: relative;
+  z-index: 10;
 }
 
 .open {
@@ -61,6 +64,26 @@
 }
 
 .toggleBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Mobile close button — hidden on desktop, shown on mobile */
+.mobileCloseBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+}
+
+.mobileCloseBtn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -209,4 +232,60 @@
 .logoutBtn:hover {
   background: var(--bg-hover);
   color: var(--error);
+}
+
+/* Backdrop for mobile overlay */
+.backdrop {
+  display: none;
+}
+
+/* -------------------------------------------------------------------------
+   Mobile styles (max-width: 767px)
+   Sidebar becomes a fixed overlay instead of pushing content.
+------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 200;
+    /* Slide in/out from the left */
+    transform: translateX(-100%);
+    transition: transform 0.25s ease, width 0.25s ease;
+    width: 280px !important; /* fixed width on mobile */
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    width: 280px !important;
+  }
+
+  .sidebar.closed {
+    transform: translateX(-100%);
+    /* Keep width so transition is smooth, but it's off-screen */
+    width: 280px !important;
+  }
+
+  /* Hide the desktop toggle arrow on mobile */
+  .toggleBtn {
+    display: none;
+  }
+
+  /* Show the mobile close (X) button */
+  .mobileCloseBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+  }
+
+  /* Show the backdrop when sidebar is open */
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 199;
+  }
 }
