@@ -50,11 +50,15 @@ anthropic_tools: list[dict] = []
 
 
 def _build_anthropic_tools() -> list[dict]:
-    """Convert all registered tools into Anthropic tool definitions."""
+    """Convert all registered tools into Anthropic tool definitions.
+    
+    Tool names use underscores instead of dots because the Anthropic API
+    does not allow dots in tool names (e.g. "web.search" -> "web_search").
+    """
     tools = []
     for tool_def in list_tools():
         tools.append({
-            "name": tool_def.name,
+            "name": tool_def.name.replace(".", "_"),
             "description": tool_def.description,
             "input_schema": {
                 "type": "object",
@@ -260,6 +264,9 @@ def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
     each tool via run_tool, appends results, and loops until Claude
     returns end_turn or we hit MAX_AGENT_ITERATIONS.
 
+    Tool names are sent to the Anthropic API with underscores (e.g. "web_search")
+    and converted back to dots (e.g. "web.search") before dispatching to run_tool.
+
     Returns the final assistant text response.
     """
     for _iteration in range(MAX_AGENT_ITERATIONS):
@@ -292,8 +299,11 @@ def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
             if block.type != "tool_use":
                 continue
 
+            # Convert underscore-based name back to dot-based name for the registry
+            registry_tool_name = block.name.replace("_", ".")
+
             tool_request = ToolRequest(
-                tool_name=block.name,
+                tool_name=registry_tool_name,
                 args=block.input,
                 purpose="agent_tool_call",
                 user_id=user_id,
