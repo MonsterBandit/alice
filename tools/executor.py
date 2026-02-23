@@ -2,11 +2,12 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import tools.general.web      # side-effects: registers web.* GENERAL tools
-import tools.general.local    # side-effects: registers local.* GENERAL tools
-import tools.finance.firefly  # side-effects: registers finance.* FINANCE tools
-import tools.coding.developer # side-effects: registers coding.* CODING tools
-import tools.research.trusted # side-effects: registers research.* RESEARCH tools
+import tools.general.web       # side-effects: registers web.* GENERAL tools
+import tools.general.local     # side-effects: registers local.* GENERAL tools
+import tools.general.everyday  # side-effects: registers everyday.* GENERAL tools
+import tools.finance.firefly   # side-effects: registers finance.* FINANCE tools
+import tools.coding.developer  # side-effects: registers coding.* CODING tools
+import tools.research.trusted  # side-effects: registers research.* RESEARCH tools
 
 from .registry import ToolFamily, get_tool, is_tool_allowed
 from .types import ToolFailureClass, ToolProvenance, ToolRequest, ToolResult
@@ -42,8 +43,9 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
     Route the request to the correct tool family handler.
 
     Within GENERAL, tool names are routed by prefix:
-      - "web.*"   → tools.general.web.dispatch
-      - "local.*" → tools.general.local.dispatch
+      - "web.*"       → tools.general.web.dispatch
+      - "local.*"     → tools.general.local.dispatch
+      - "everyday.*"  → tools.general.everyday.dispatch
 
     Within FINANCE:
       - all tools → tools.finance.firefly.dispatch
@@ -59,9 +61,11 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
             return tools.general.web.dispatch(request)
         if request.tool_name.startswith("local."):
             return tools.general.local.dispatch(request)
+        if request.tool_name.startswith("everyday."):
+            return tools.general.everyday.dispatch(request)
         raise NotImplementedError(
             f"No GENERAL handler found for tool '{request.tool_name}'. "
-            "Expected a 'web.*' or 'local.*' prefix."
+            "Expected a 'web.*', 'local.*', or 'everyday.*' prefix."
         )
     elif family == ToolFamily.RESEARCH:
         return tools.research.trusted.dispatch(request)
