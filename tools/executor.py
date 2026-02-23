@@ -5,6 +5,8 @@ from typing import Optional
 import tools.general.web      # side-effects: registers web.* GENERAL tools
 import tools.general.local    # side-effects: registers local.* GENERAL tools
 import tools.finance.firefly  # side-effects: registers finance.* FINANCE tools
+import tools.coding.developer # side-effects: registers coding.* CODING tools
+import tools.research.trusted # side-effects: registers research.* RESEARCH tools
 
 from .registry import ToolFamily, get_tool, is_tool_allowed
 from .types import ToolFailureClass, ToolProvenance, ToolRequest, ToolResult
@@ -45,6 +47,12 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
 
     Within FINANCE:
       - all tools → tools.finance.firefly.dispatch
+
+    Within CODING:
+      - all tools → tools.coding.developer.dispatch
+
+    Within RESEARCH:
+      - all tools → tools.research.trusted.dispatch
     """
     if family == ToolFamily.GENERAL:
         if request.tool_name.startswith("web."):
@@ -56,9 +64,9 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
             "Expected a 'web.*' or 'local.*' prefix."
         )
     elif family == ToolFamily.RESEARCH:
-        raise NotImplementedError(f"RESEARCH tool '{request.tool_name}' is not yet implemented.")
+        return tools.research.trusted.dispatch(request)
     elif family == ToolFamily.CODING:
-        raise NotImplementedError(f"CODING tool '{request.tool_name}' is not yet implemented.")
+        return tools.coding.developer.dispatch(request)
     elif family == ToolFamily.FINANCE:
         return tools.finance.firefly.dispatch(request)
     else:
