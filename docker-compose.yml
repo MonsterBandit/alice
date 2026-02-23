@@ -8,6 +8,8 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
     depends_on:
       - alice-mariadb
       - alice-redis
