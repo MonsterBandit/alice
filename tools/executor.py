@@ -2,7 +2,10 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import tools.general.web  # imported for side-effects: registers GENERAL tools on startup
+import tools.general.web      # side-effects: registers web.* GENERAL tools
+import tools.general.local    # side-effects: registers local.* GENERAL tools
+import tools.finance.firefly  # side-effects: registers finance.* FINANCE tools
+
 from .registry import ToolFamily, get_tool, is_tool_allowed
 from .types import ToolFailureClass, ToolProvenance, ToolRequest, ToolResult
 
@@ -35,15 +38,29 @@ def _make_error_result(
 def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
     """
     Route the request to the correct tool family handler.
+
+    Within GENERAL, tool names are routed by prefix:
+      - "web.*"   → tools.general.web.dispatch
+      - "local.*" → tools.general.local.dispatch
+
+    Within FINANCE:
+      - all tools → tools.finance.firefly.dispatch
     """
     if family == ToolFamily.GENERAL:
-        return tools.general.web.dispatch(request)
+        if request.tool_name.startswith("web."):
+            return tools.general.web.dispatch(request)
+        if request.tool_name.startswith("local."):
+            return tools.general.local.dispatch(request)
+        raise NotImplementedError(
+            f"No GENERAL handler found for tool '{request.tool_name}'. "
+            "Expected a 'web.*' or 'local.*' prefix."
+        )
     elif family == ToolFamily.RESEARCH:
         raise NotImplementedError(f"RESEARCH tool '{request.tool_name}' is not yet implemented.")
     elif family == ToolFamily.CODING:
         raise NotImplementedError(f"CODING tool '{request.tool_name}' is not yet implemented.")
     elif family == ToolFamily.FINANCE:
-        raise NotImplementedError(f"FINANCE tool '{request.tool_name}' is not yet implemented.")
+        return tools.finance.firefly.dispatch(request)
     else:
         raise NotImplementedError(f"Unknown tool family '{family}' for tool '{request.tool_name}'.")
 
