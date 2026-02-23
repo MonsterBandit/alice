@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
+anthropic
+pydantic
 redis
-psycopg2-binary
-openai
-requests
+PyMySQL
+httpx
 beautifulsoup4
 tavily-python
