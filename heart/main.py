@@ -40,6 +40,12 @@ MAX_AGENT_ITERATIONS = 10
 JWT_SECRET = os.environ.get("ALICE_JWT_SECRET", "dev-secret")
 ADMIN_PASSWORD = os.environ.get("ALICE_ADMIN_PASSWORD", "changeme")
 
+TOOL_KEYWORDS = [
+    "read", "file", "search", "list", "tree", "run", "bash", "fetch",
+    "find", "grep", "write", "create", "tool", "look", "check",
+    "show me", "what is in", "what's in", "open",
+]
+
 redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
 mariadb_connection: pymysql.connections.Connection = None
@@ -251,11 +257,17 @@ def save_exchange_to_db(user_id: str, user_message: str, assistant_message: str)
             ],
         )
 
+
+def needs_tools(message: str) -> bool:
+    """Return True if the message contains any keyword that suggests tool use is needed."""
+    lowered = message.lower()
+    return any(keyword in lowered for keyword in TOOL_KEYWORDS)
+
 # ---------------------------------------------------------------------------
 # Agentic loop helper
 # ---------------------------------------------------------------------------
 
-def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
+def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True) -> str:
     """
     Run the Claude agentic loop with tool use.
 
@@ -268,14 +280,19 @@ def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
     only the first underscore is replaced back with a dot, preserving any
     remaining underscores in the tool name (e.g. "local_read_file" -> "local.read_file").
 
+    When use_tools is False, no tools are passed to the API, skipping the
+    agentic loop entirely and returning the first text response.
+
     Returns the final assistant text response.
     """
+    tools = anthropic_tools if (use_tools and anthropic_tools) else []
+
     for _iteration in range(MAX_AGENT_ITERATIONS):
         result = anthropic_client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
-            tools=anthropic_tools if anthropic_tools else [],
+            tools=tools,
             messages=messages,
         )
 
@@ -359,7 +376,11 @@ def chat(request: ChatRequest):
         history = load_history(request.user_id)
         messages = history + [{"role": "user", "content": request.message}]
 
-        reply = _run_agentic_loop(messages, user_id=request.user_id)
+        reply = _run_agentic_loop(
+            messages,
+            user_id=request.user_id,
+            use_tools=needs_tools(request.message),
+        )
 
         save_exchange(request.user_id, request.message, reply)
 
