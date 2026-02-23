@@ -210,7 +210,9 @@ def tools_search(request: SearchRequest):
     try:
         tool_request = ToolRequest(
             tool_name="web.search",
-            params={"query": request.query},
+            args={"q": request.query},
+            purpose="search",
+            user_id=request.user_id,
         )
         result = run_tool(tool_request, enabled_tools=None)  # None = all tools allowed
 
