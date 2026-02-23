@@ -16,6 +16,7 @@ services:
       - ALICE_ADMIN_PASSWORD=${ALICE_ADMIN_PASSWORD}
     volumes:
       - /opt/alice:/opt/alice:ro
+      - /:/host:ro
 
     depends_on:
       - alice-mariadb
