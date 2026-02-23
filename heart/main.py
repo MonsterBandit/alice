@@ -17,7 +17,6 @@ import anthropic
 # ---------------------------------------------------------------------------
 # Tool layer
 # ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tools.executor import run_tool
 from tools.types import ToolRequest
 from tools.registry import list_tools
@@ -45,9 +44,6 @@ redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
 mariadb_connection: pymysql.connections.Connection = None
 
-# Built once at startup from the tool registry
-anthropic_tools: list[dict] = []
-
 
 def _build_anthropic_tools() -> list[dict]:
     """Convert all registered tools into Anthropic tool definitions.
@@ -68,9 +64,15 @@ def _build_anthropic_tools() -> list[dict]:
     return tools
 
 
+# Built at module level from the tool registry so tools are registered
+# before the app starts accepting requests and there is no risk of a
+# duplicate registry instance caused by sys.path manipulation.
+anthropic_tools: list[dict] = _build_anthropic_tools()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_client, anthropic_client, mariadb_connection, anthropic_tools
+    global redis_client, anthropic_client, mariadb_connection
 
     redis_client = redis.Redis(host="alice-redis", port=6379, decode_responses=True)
     redis_client.ping()
@@ -115,9 +117,6 @@ async def lifespan(app: FastAPI):
                 used TINYINT DEFAULT 0
             )
         """)
-
-    # Build tool definitions from the registry after all modules are loaded
-    anthropic_tools = _build_anthropic_tools()
 
     yield
 
