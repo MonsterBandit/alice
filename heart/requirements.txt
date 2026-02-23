@@ -4,3 +4,5 @@ anthropic
 pydantic
 redis
 PyMySQL
+httpx
+beautifulsoup4
