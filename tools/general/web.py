@@ -80,7 +80,7 @@ def _fetch_url(url: str, timeout: float = 15.0) -> tuple[str, str]:
 def web_search(request: ToolRequest) -> ToolResult:
     query = (request.args or {}).get("query", "").strip()
     if not query:
-        return _make_err("web.search", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'query'.")
+        return _make_err("web.search", ToolFailureClass.BAD_INPUT, "Missing required param: 'query'.")
 
     search_url = f"https://html.duckduckgo.com/html/?q={httpx.URL('').copy_with(params={'q': query}).params}"
 
@@ -111,7 +111,7 @@ def web_search(request: ToolRequest) -> ToolResult:
 def web_fetch(request: ToolRequest) -> ToolResult:
     url = (request.args or {}).get("url", "").strip()
     if not url:
-        return _make_err("web.fetch", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'url'.")
+        return _make_err("web.fetch", ToolFailureClass.BAD_INPUT, "Missing required param: 'url'.")
 
     try:
         final_url, html = _fetch_url(url)
@@ -124,7 +124,7 @@ def web_fetch(request: ToolRequest) -> ToolResult:
 def web_read_site(request: ToolRequest) -> ToolResult:
     url = (request.args or {}).get("url", "").strip()
     if not url:
-        return _make_err("web.read_site", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'url'.")
+        return _make_err("web.read_site", ToolFailureClass.BAD_INPUT, "Missing required param: 'url'.")
 
     try:
         final_url, html = _fetch_url(url)
