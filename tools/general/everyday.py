@@ -179,20 +179,20 @@ def set_reminder(request: ToolRequest) -> ToolResult:
     if not message:
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             "Missing required argument: 'message'.",
         )
     if not when_raw:
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             "Missing required argument: 'when'.",
         )
 
     try:
         when_iso = _parse_when(when_raw)
     except ValueError as e:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, str(e))
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, str(e))
 
     reminder = {
         "id": f"reminder_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
@@ -259,13 +259,13 @@ def write_draft(request: ToolRequest) -> ToolResult:
     if not draft_type:
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             "Missing required argument: 'type'.",
         )
     if not brief:
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             "Missing required argument: 'content_brief'.",
         )
 
@@ -334,7 +334,7 @@ def summarize(request: ToolRequest) -> ToolResult:
     if not text:
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             "Missing required argument: 'text'.",
         )
 
