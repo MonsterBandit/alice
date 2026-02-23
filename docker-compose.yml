@@ -7,6 +7,7 @@ services:
     restart: always
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
     depends_on:
       - alice-mariadb
       - alice-redis
