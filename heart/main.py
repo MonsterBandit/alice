@@ -34,7 +34,7 @@ You speak with warmth and clarity. You are direct without being cold. You care a
 You are Alice. There is only one of you, and you belong to this household."""
 
 MAX_HISTORY = 20
-CONTEXT_WINDOW = 10
+CONTEXT_WINDOW = 4
 MAX_AGENT_ITERATIONS = 10
 
 JWT_SECRET = os.environ.get("ALICE_JWT_SECRET", "dev-secret")
