@@ -78,7 +78,7 @@ def _fetch_url(url: str, timeout: float = 15.0) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def web_search(request: ToolRequest) -> ToolResult:
-    query = (request.params or {}).get("query", "").strip()
+    query = (request.args or {}).get("query", "").strip()
     if not query:
         return _make_err("web.search", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'query'.")
 
@@ -109,7 +109,7 @@ def web_search(request: ToolRequest) -> ToolResult:
 
 
 def web_fetch(request: ToolRequest) -> ToolResult:
-    url = (request.params or {}).get("url", "").strip()
+    url = (request.args or {}).get("url", "").strip()
     if not url:
         return _make_err("web.fetch", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'url'.")
 
@@ -122,7 +122,7 @@ def web_fetch(request: ToolRequest) -> ToolResult:
 
 
 def web_read_site(request: ToolRequest) -> ToolResult:
-    url = (request.params or {}).get("url", "").strip()
+    url = (request.args or {}).get("url", "").strip()
     if not url:
         return _make_err("web.read_site", ToolFailureClass.INVALID_PARAMS, "Missing required param: 'url'.")
 
