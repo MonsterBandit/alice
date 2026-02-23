@@ -78,7 +78,7 @@ def _fetch_url(url: str, timeout: float = 15.0) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def web_search(request: ToolRequest) -> ToolResult:
-    query = (request.args or {}).get("query", "").strip()
+    query = (request.args or {}).get("q", "").strip()
     if not query:
         return _make_err("web.search", ToolFailureClass.BAD_INPUT, "Missing required param: 'query'.")
 
