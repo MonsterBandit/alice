@@ -1,0 +1,168 @@
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  max-width: 820px;
+  width: 100%;
+}
+
+.userRow {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+
+.aliceRow {
+  align-self: flex-start;
+  margin-right: auto;
+}
+
+.aliceAvatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.bubble {
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.userBubble {
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.aliceBubble {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.errorBubble {
+  background: var(--bg-secondary);
+  border: 1px solid var(--error);
+  color: var(--error);
+  border-bottom-left-radius: 4px;
+}
+
+.aliceName {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.content {
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.content p {
+  margin: 0 0 0.6em;
+}
+
+.content p:last-child {
+  margin-bottom: 0;
+}
+
+.content ul,
+.content ol {
+  margin: 0.4em 0 0.6em 1.25em;
+  padding: 0;
+}
+
+.content li {
+  margin-bottom: 0.2em;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+  margin: 0.75em 0 0.35em;
+  color: var(--text-primary);
+}
+
+.content a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.content blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.5em 0;
+  padding: 0.25em 0.75em;
+  color: var(--text-secondary);
+}
+
+.userText {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.codeBlock {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin: 0.5em 0;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #12141e;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.codeLang {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: monospace;
+}
+
+.copyBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.copyBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.inlineCode {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  color: var(--accent-light);
+}
