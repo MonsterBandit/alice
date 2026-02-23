@@ -89,14 +89,14 @@ def run_bash(request: ToolRequest) -> ToolResult:
     tool_name = "coding.run_bash"
     command = request.args.get("command")
     if not command:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'command'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'command'.")
 
     working_dir = request.args.get("working_dir", "/opt/alice")
 
     if not os.path.isdir(working_dir):
         return _make_err(
             tool_name,
-            ToolFailureClass.INVALID_INPUT,
+            ToolFailureClass.BAD_INPUT,
             f"working_dir does not exist or is not a directory: '{working_dir}'",
         )
 
@@ -135,13 +135,13 @@ def read_file(request: ToolRequest) -> ToolResult:
     tool_name = "coding.read_file"
     path = request.args.get("path")
     if not path:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'path'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'path'.")
 
     if not os.path.exists(path):
-        return _make_err(tool_name, ToolFailureClass.NOT_FOUND, f"File not found: '{path}'")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, f"File not found: '{path}'")
 
     if not os.path.isfile(path):
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, f"Path is not a file: '{path}'")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, f"Path is not a file: '{path}'")
 
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -165,9 +165,9 @@ def write_file(request: ToolRequest) -> ToolResult:
     content = request.args.get("content")
 
     if not path:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'path'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'path'.")
     if content is None:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'content'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'content'.")
 
     try:
         parent = os.path.dirname(path)
@@ -198,13 +198,13 @@ def list_dir(request: ToolRequest) -> ToolResult:
     tool_name = "coding.list_dir"
     path = request.args.get("path")
     if not path:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'path'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'path'.")
 
     if not os.path.exists(path):
-        return _make_err(tool_name, ToolFailureClass.NOT_FOUND, f"Path not found: '{path}'")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, f"Path not found: '{path}'")
 
     if not os.path.isdir(path):
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, f"Path is not a directory: '{path}'")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, f"Path is not a directory: '{path}'")
 
     try:
         entries = []

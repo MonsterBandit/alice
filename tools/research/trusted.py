@@ -153,7 +153,7 @@ def fetch_trusted(request: ToolRequest) -> ToolResult:
     tool_name = "research.fetch_trusted"
     url = request.args.get("url")
     if not url:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'url'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'url'.")
 
     if not _is_trusted(url):
         return _make_err(
@@ -163,7 +163,12 @@ def fetch_trusted(request: ToolRequest) -> ToolResult:
         )
 
     # Delegate actual fetching to web.web_fetch
-    fetch_request = ToolRequest(tool_name="web.fetch", args={"url": url})
+    fetch_request = ToolRequest(
+        tool_name="web.fetch",
+        args={"url": url},
+        purpose="internal",
+        user_id="system",
+    )
     fetch_result = web_module.dispatch(fetch_request)
 
     if not fetch_result.ok:
@@ -197,9 +202,14 @@ def search_trusted(request: ToolRequest) -> ToolResult:
     tool_name = "research.search_trusted"
     q = request.args.get("q")
     if not q:
-        return _make_err(tool_name, ToolFailureClass.INVALID_INPUT, "Missing required arg: 'q'.")
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "Missing required arg: 'q'.")
 
-    search_request = ToolRequest(tool_name="web.search", args={"q": q})
+    search_request = ToolRequest(
+        tool_name="web.search",
+        args={"q": q},
+        purpose="internal",
+        user_id="system",
+    )
     search_result = web_module.dispatch(search_request)
 
     if not search_result.ok:
