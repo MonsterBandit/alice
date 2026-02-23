@@ -20,6 +20,7 @@ import anthropic
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tools.executor import run_tool
 from tools.types import ToolRequest
+from tools.registry import list_tools
 
 # ---------------------------------------------------------------------------
 # Alice config
@@ -35,6 +36,7 @@ You are Alice. There is only one of you, and you belong to this household."""
 
 MAX_HISTORY = 20
 CONTEXT_WINDOW = 10
+MAX_AGENT_ITERATIONS = 10
 
 JWT_SECRET = os.environ.get("ALICE_JWT_SECRET", "dev-secret")
 ADMIN_PASSWORD = os.environ.get("ALICE_ADMIN_PASSWORD", "changeme")
@@ -43,10 +45,28 @@ redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
 mariadb_connection: pymysql.connections.Connection = None
 
+# Built once at startup from the tool registry
+anthropic_tools: list[dict] = []
+
+
+def _build_anthropic_tools() -> list[dict]:
+    """Convert all registered tools into Anthropic tool definitions."""
+    tools = []
+    for tool_def in list_tools():
+        tools.append({
+            "name": tool_def.name,
+            "description": tool_def.description,
+            "input_schema": {
+                "type": "object",
+                "additionalProperties": True,
+            },
+        })
+    return tools
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_client, anthropic_client, mariadb_connection
+    global redis_client, anthropic_client, mariadb_connection, anthropic_tools
 
     redis_client = redis.Redis(host="alice-redis", port=6379, decode_responses=True)
     redis_client.ping()
@@ -91,6 +111,9 @@ async def lifespan(app: FastAPI):
                 used TINYINT DEFAULT 0
             )
         """)
+
+    # Build tool definitions from the registry after all modules are loaded
+    anthropic_tools = _build_anthropic_tools()
 
     yield
 
@@ -226,6 +249,87 @@ def save_exchange_to_db(user_id: str, user_message: str, assistant_message: str)
         )
 
 # ---------------------------------------------------------------------------
+# Agentic loop helper
+# ---------------------------------------------------------------------------
+
+def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
+    """
+    Run the Claude agentic loop with tool use.
+
+    Sends messages to Claude, handles tool_use responses by dispatching
+    each tool via run_tool, appends results, and loops until Claude
+    returns end_turn or we hit MAX_AGENT_ITERATIONS.
+
+    Returns the final assistant text response.
+    """
+    for _iteration in range(MAX_AGENT_ITERATIONS):
+        result = anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            tools=anthropic_tools if anthropic_tools else [],
+            messages=messages,
+        )
+
+        # If Claude is done, extract and return the text response
+        if result.stop_reason == "end_turn" or not any(
+            block.type == "tool_use" for block in result.content
+        ):
+            # Find the last text block in the response
+            for block in result.content:
+                if block.type == "text":
+                    return block.text
+            # Fallback: no text block found (shouldn't happen on end_turn)
+            return ""
+
+        # stop_reason == "tool_use": process all tool_use blocks
+        # Append the full assistant message (may contain text + tool_use blocks)
+        messages.append({"role": "assistant", "content": result.content})
+
+        # Build tool_result blocks for every tool_use block
+        tool_results = []
+        for block in result.content:
+            if block.type != "tool_use":
+                continue
+
+            tool_request = ToolRequest(
+                tool_name=block.name,
+                args=block.input,
+                purpose="agent_tool_call",
+                user_id=user_id,
+            )
+            tool_result = run_tool(tool_request, enabled_tools=None)
+
+            if tool_result.ok:
+                content = json.dumps(tool_result.primary)
+                is_error = False
+            else:
+                content = tool_result.failure_message or "Tool call failed."
+                is_error = True
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": content,
+                "is_error": is_error,
+            })
+
+        # Feed all tool results back to Claude as a user message
+        messages.append({"role": "user", "content": tool_results})
+
+    # If we exhausted iterations, make one final call without tools to get a text reply
+    final_result = anthropic_client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=messages,
+    )
+    for block in final_result.content:
+        if block.type == "text":
+            return block.text
+    return ""
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -241,13 +345,7 @@ def chat(request: ChatRequest):
         history = load_history(request.user_id)
         messages = history + [{"role": "user", "content": request.message}]
 
-        result = anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=messages,
-        )
-        reply = result.content[0].text
+        reply = _run_agentic_loop(messages, user_id=request.user_id)
 
         save_exchange(request.user_id, request.message, reply)
 
