@@ -1,7 +1,9 @@
 services:
   alice-heart:
     container_name: alice
-    build: ./heart
+    build:
+      context: .
+      dockerfile: heart/Dockerfile
     ports:
       - "8000:8000"
     restart: always
