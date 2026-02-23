@@ -2,10 +2,17 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 
 const AuthContext = createContext(null)
 
+let cachedUser = null
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null)
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(cachedUser)
   const refreshTimerRef = useRef(null)
+
+  const setUserCached = useCallback((u) => {
+    cachedUser = u
+    setUser(u)
+  }, [])
 
   const scheduleRefresh = useCallback((delayMs) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
@@ -20,7 +27,7 @@ export function AuthProvider({ children }) {
         if (res.ok) {
           const data = await res.json()
           setToken(data.token)
-          if (data.user_id) setUser({ id: data.user_id, name: data.name })
+          if (data.user_id) setUserCached({ id: data.user_id, name: data.name })
           // Schedule next refresh — assume 15 min token lifetime if not told
           scheduleRefresh(15 * 60 * 1000)
         } else {
@@ -44,13 +51,14 @@ export function AuthProvider({ children }) {
     }
     const data = await res.json()
     setToken(data.token)
-    setUser({ id: data.user_id, name: data.name })
+    setUserCached({ id: data.user_id, name: data.name })
     scheduleRefresh(15 * 60 * 1000)
     return data
-  }, [scheduleRefresh])
+  }, [scheduleRefresh, setUserCached])
 
   const logout = useCallback(() => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    cachedUser = null
     setToken(null)
     setUser(null)
   }, [])
@@ -65,12 +73,12 @@ export function AuthProvider({ children }) {
       .then((data) => {
         if (data?.token) {
           setToken(data.token)
-          setUser({ id: data.user_id, name: data.name })
+          setUserCached({ id: data.user_id, name: data.name })
           scheduleRefresh(15 * 60 * 1000)
         }
       })
       .catch(() => {})
-  }, [scheduleRefresh])
+  }, [scheduleRefresh, setUserCached])
 
   return (
     <AuthContext.Provider value={{ token, user, login, logout }}>
