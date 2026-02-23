@@ -263,8 +263,10 @@ def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
     each tool via run_tool, appends results, and loops until Claude
     returns end_turn or we hit MAX_AGENT_ITERATIONS.
 
-    Tool names are sent to the Anthropic API with underscores (e.g. "web_search")
-    and converted back to dots (e.g. "web.search") before dispatching to run_tool.
+    Tool names are sent to the Anthropic API with underscores replacing the
+    first dot (e.g. "local.read_file" -> "local_read_file"). To reverse this,
+    only the first underscore is replaced back with a dot, preserving any
+    remaining underscores in the tool name (e.g. "local_read_file" -> "local.read_file").
 
     Returns the final assistant text response.
     """
@@ -298,8 +300,11 @@ def _run_agentic_loop(messages: list[dict], user_id: str) -> str:
             if block.type != "tool_use":
                 continue
 
-            # Convert underscore-based name back to dot-based name for the registry
-            registry_tool_name = block.name.replace("_", ".")
+            # Convert underscore-based name back to dot-based name for the registry.
+            # Only the first underscore is replaced so that tool names containing
+            # underscores (e.g. "local_read_file") are correctly restored to their
+            # registry form (e.g. "local.read_file") rather than "local.read.file".
+            registry_tool_name = block.name.replace("_", ".", 1)
 
             tool_request = ToolRequest(
                 tool_name=registry_tool_name,
