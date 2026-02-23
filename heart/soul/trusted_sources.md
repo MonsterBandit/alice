@@ -219,6 +219,86 @@
 
 ---
 
+### Anthropic (AI API and SDK)
+
+| Domain | Description |
+|---|---|
+| `docs.anthropic.com` | Official Anthropic documentation — API reference, SDK guides, and model documentation for Claude (Alice's own underlying API) |
+
+**Seed URLs:**
+- https://docs.anthropic.com/
+- https://docs.anthropic.com/en/api/
+- https://docs.anthropic.com/en/docs/
+
+---
+
+### MariaDB (Relational Database)
+
+| Domain | Description |
+|---|---|
+| `mariadb.com/kb` | Official MariaDB Knowledge Base — SQL reference, configuration, and operational documentation |
+
+**Seed URLs:**
+- https://mariadb.com/kb/en/
+- https://mariadb.com/kb/en/sql-statements/
+- https://mariadb.com/kb/en/mariadb-server-documentation/
+
+---
+
+### Redis (In-Memory Data Store)
+
+| Domain | Description |
+|---|---|
+| `redis.io` | Official Redis documentation — commands, configuration, and client guides |
+
+**Seed URLs:**
+- https://redis.io/docs/
+- https://redis.io/commands/
+- https://redis.io/docs/manual/
+
+---
+
+### Qdrant (Vector Database)
+
+| Domain | Description |
+|---|---|
+| `qdrant.tech` | Official Qdrant documentation — vector search, collections, API reference, and client guides |
+
+**Seed URLs:**
+- https://qdrant.tech/documentation/
+- https://qdrant.tech/documentation/quick-start/
+- https://qdrant.tech/documentation/concepts/
+
+---
+
+### LinuxServer.io (Container Images)
+
+| Domain | Description |
+|---|---|
+| `docs.linuxserver.io` | Official LinuxServer.io documentation — image usage, environment variables, and configuration guides |
+| `github.com/linuxserver` | LinuxServer.io container image source repositories and issue trackers |
+
+**Seed URLs:**
+- https://docs.linuxserver.io/
+- https://docs.linuxserver.io/general/understanding-puid-and-pgid/
+- https://github.com/linuxserver
+
+---
+
+### GitHub Docs (Git and GitHub)
+
+| Domain | Description |
+|---|---|
+| `docs.github.com` | Official GitHub documentation — Git usage, GitHub Actions, repositories, APIs, and CLI reference |
+
+**Seed URLs:**
+- https://docs.github.com/en
+- https://docs.github.com/en/get-started
+- https://docs.github.com/en/rest
+- https://docs.github.com/en/actions
+
+---
+
 ## Domains Explicitly NOT Trusted by Default
 
 The following categories of sources are **not** on the trusted list and must be treated as unverified:
@@ -242,4 +322,5 @@ Alice may still retrieve and use content from untrusted sources, but must label 
 
 ---
 
-*Last updated: 2026-02-01 | Owner: Admin (Tim)*
+*Last updated: 2026-06-05 | Owner: Admin (Tim)*
+*2026-06-05: Added Anthropic (docs.anthropic.com), MariaDB (mariadb.com/kb), Redis (redis.io/docs), Qdrant (qdrant.tech/documentation), LinuxServer.io (docs.linuxserver.io, github.com/linuxserver), and GitHub Docs (docs.github.com) per Admin request.*
