@@ -134,7 +134,7 @@ def web_fetch(request: ToolRequest) -> ToolResult:
     try:
         final_url, html = _fetch_url(url)
     except httpx.HTTPError as e:
-        return _make_err("web.fetch", ToolFailureClass.NETWORK_ERROR, f"Fetch failed for '{url}': {e}")
+        return _make_err("web.fetch", ToolFailureClass.UPSTREAM_ERROR, f"Fetch failed for '{url}': {e}")
 
     return _make_ok("web.fetch", html, sources=[final_url])
 
@@ -147,7 +147,7 @@ def web_read_site(request: ToolRequest) -> ToolResult:
     try:
         final_url, html = _fetch_url(url)
     except httpx.HTTPError as e:
-        return _make_err("web.read_site", ToolFailureClass.NETWORK_ERROR, f"Fetch failed for '{url}': {e}")
+        return _make_err("web.read_site", ToolFailureClass.UPSTREAM_ERROR, f"Fetch failed for '{url}': {e}")
 
     title, text = _clean_html(html)
     return _make_ok("web.read_site", {"title": title, "text": text}, sources=[final_url])
