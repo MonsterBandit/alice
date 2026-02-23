@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -78,34 +79,51 @@ def _fetch_url(url: str, timeout: float = 15.0) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def web_search(request: ToolRequest) -> ToolResult:
-    query = (request.args or {}).get("q", "").strip()
-    if not query:
-        return _make_err("web.search", ToolFailureClass.BAD_INPUT, "Missing required param: 'query'.")
-
-    search_url = f"https://html.duckduckgo.com/html/?q={httpx.URL('').copy_with(params={'q': query}).params}"
-
-    try:
-        final_url, html = _fetch_url(search_url)
-    except httpx.HTTPError as e:
-        return _make_err("web.search", ToolFailureClass.NETWORK_ERROR, f"Search request failed: {e}")
-
-    soup = BeautifulSoup(html, "html.parser")
+    tool_name = "web.search"
+    q = request.args.get("q", "").strip()
+    if not q:
+        return _make_err(tool_name, ToolFailureClass.BAD_INPUT, "'q' argument is required.")
+    count = int(request.args.get("count", 10))
     results = []
-    for result in soup.select(".result"):
-        title_tag = result.select_one(".result__title a")
-        snippet_tag = result.select_one(".result__snippet")
-        url_tag = result.select_one(".result__url")
-        if title_tag:
-            results.append({
-                "title": title_tag.get_text(strip=True),
-                "url": url_tag.get_text(strip=True) if url_tag else "",
-                "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
-            })
-
+    sources_used = []
+    notes = []
+    brave_api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    brave_ok = False
+    if brave_api_key:
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                resp = client.get("https://api.search.brave.com/res/v1/web/search", headers={"X-Subscription-Token": brave_api_key}, params={"q": q, "count": count})
+                resp.raise_for_status()
+                data = resp.json()
+            web_results = data.get("web", {}).get("results", [])
+            if web_results:
+                for item in web_results:
+                    results.append({"title": item.get("title", ""), "url": item.get("url", ""), "snippet": item.get("description", "")})
+                sources_used.append("https://api.search.brave.com")
+                brave_ok = True
+            else:
+                notes.append("Brave returned no results; falling back to Tavily.")
+        except Exception as exc:
+            notes.append(f"Brave failed ({exc}); falling back to Tavily.")
+    else:
+        notes.append("BRAVE_SEARCH_API_KEY not set; falling back to Tavily.")
+    if not brave_ok:
+        tavily_api_key = os.environ.get("TAVILY_API_KEY", "")
+        if not tavily_api_key:
+            return _make_err(tool_name, ToolFailureClass.UPSTREAM_ERROR, "Both Brave and Tavily unavailable.")
+        try:
+            from tavily import TavilyClient
+            client = TavilyClient(api_key=tavily_api_key)
+            response = client.search(query=q, max_results=count)
+            for item in response.get("results", []):
+                results.append({"title": item.get("title", ""), "url": item.get("url", ""), "snippet": item.get("content", "")})
+            sources_used.append("https://api.tavily.com")
+            notes.append("Results from Tavily fallback.")
+        except Exception as exc:
+            return _make_err(tool_name, ToolFailureClass.UPSTREAM_ERROR, f"Both search providers failed. Tavily: {exc}")
     if not results:
-        return _make_err("web.search", ToolFailureClass.NO_RESULTS, f"No results found for query: '{query}'.")
-
-    return _make_ok("web.search", results, sources=[final_url], notes=f"Query: {query}")
+        return _make_err(tool_name, ToolFailureClass.UPSTREAM_ERROR, "No results from any provider.")
+    return _make_ok(tool_name=tool_name, primary=results, sources=sources_used, notes="; ".join(notes) if notes else None)
 
 
 def web_fetch(request: ToolRequest) -> ToolResult:
