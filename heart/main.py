@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import redis
 import pymysql
@@ -7,6 +8,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import anthropic
+
+# ---------------------------------------------------------------------------
+# Tool layer
+# ---------------------------------------------------------------------------
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from tools.executor import run_tool
+from tools.types import ToolRequest
+
+# ---------------------------------------------------------------------------
+# Alice config
+# ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """You are Alice, a singular life management AI serving a household. You are not a generic assistant.
 
@@ -62,6 +74,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Alice - Heart", lifespan=lifespan)
 
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
 
 class ChatRequest(BaseModel):
     message: str
@@ -80,6 +95,24 @@ class HistoryEntry(BaseModel):
     content: str
     timestamp: str
 
+
+class SearchRequest(BaseModel):
+    user_id: str
+    query: str
+
+
+class SearchResponse(BaseModel):
+    ok: bool
+    user_id: str
+    query: str
+    results: list | None
+    failure_class: str | None = None
+    failure_message: str | None = None
+    latency_ms: float
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def get_history_key(user_id: str) -> str:
     return f"alice:history:{user_id}"
@@ -115,6 +148,9 @@ def save_exchange_to_db(user_id: str, user_message: str, assistant_message: str)
             ],
         )
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
@@ -161,5 +197,31 @@ def get_history(user_id: str):
         # Return in chronological order
         rows.reverse()
         return rows
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/tools/search", response_model=SearchResponse)
+def tools_search(request: SearchRequest):
+    """
+    End-to-end test endpoint for the web.search tool.
+    Accepts a user_id and query, runs the tool, and returns structured results.
+    """
+    try:
+        tool_request = ToolRequest(
+            tool_name="web.search",
+            params={"query": request.query},
+        )
+        result = run_tool(tool_request, enabled_tools=None)  # None = all tools allowed
+
+        return SearchResponse(
+            ok=result.ok,
+            user_id=request.user_id,
+            query=request.query,
+            results=result.primary if result.ok else None,
+            failure_class=result.failure_class.value if result.failure_class else None,
+            failure_message=result.failure_message,
+            latency_ms=result.latency_ms,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,6 +2,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import tools.general.web  # imported for side-effects: registers GENERAL tools on startup
 from .registry import ToolFamily, get_tool, is_tool_allowed
 from .types import ToolFailureClass, ToolProvenance, ToolRequest, ToolResult
 
@@ -34,12 +35,9 @@ def _make_error_result(
 def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
     """
     Route the request to the correct tool family handler.
-    No implementations exist yet — each family raises NotImplementedError.
     """
-    retrieved_at = datetime.now(timezone.utc).isoformat()
-
     if family == ToolFamily.GENERAL:
-        raise NotImplementedError(f"GENERAL tool '{request.tool_name}' is not yet implemented.")
+        return tools.general.web.dispatch(request)
     elif family == ToolFamily.RESEARCH:
         raise NotImplementedError(f"RESEARCH tool '{request.tool_name}' is not yet implemented.")
     elif family == ToolFamily.CODING:
