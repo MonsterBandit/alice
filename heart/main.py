@@ -235,6 +235,7 @@ def health():
 
 
 @app.post("/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     try:
         history = load_history(request.user_id)
@@ -312,7 +313,7 @@ def tools_search(request: SearchRequest):
 # so these are registered without it.
 # ---------------------------------------------------------------------------
 
-@app.post("/auth/login", response_model=LoginResponse)
+@app.post("/api/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
     try:
         # Built-in admin account
@@ -354,7 +355,7 @@ def login(request: LoginRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/auth/refresh", response_model=LoginResponse)
+@app.post("/api/auth/refresh", response_model=LoginResponse)
 def refresh_token(claims: dict = Depends(require_auth)):
     try:
         user_id = claims["user_id"]
@@ -368,7 +369,7 @@ def refresh_token(claims: dict = Depends(require_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/auth/invite/accept", response_model=LoginResponse)
+@app.post("/api/auth/invite/accept", response_model=LoginResponse)
 def invite_accept(request: InviteAcceptRequest):
     try:
         with mariadb_connection.cursor() as cursor:
@@ -412,7 +413,7 @@ def invite_accept(request: InviteAcceptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/conversations", response_model=list[ConversationEntry])
+@app.get("/api/conversations", response_model=list[ConversationEntry])
 def list_conversations(claims: dict = Depends(require_auth)):
     try:
         user_id = claims["user_id"]

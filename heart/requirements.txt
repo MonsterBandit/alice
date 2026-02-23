@@ -7,3 +7,5 @@ PyMySQL
 httpx
 beautifulsoup4
 tavily-python
+PyJWT
+bcrypt

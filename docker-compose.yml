@@ -12,10 +12,27 @@ services:
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
       - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - ALICE_JWT_SECRET=${ALICE_JWT_SECRET}
+      - ALICE_ADMIN_PASSWORD=${ALICE_ADMIN_PASSWORD}
     depends_on:
       - alice-mariadb
       - alice-redis
       - alice-qdrant
+    networks:
+      - alice_default
+      - compose_default
+
+  alice-body:
+    container_name: alice-body
+    build:
+      context: ./body
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    restart: always
+    networks:
+      - alice_default
+      - compose_default
 
   alice-mariadb:
     container_name: alice-mariadb
@@ -26,6 +43,8 @@ services:
       - MARIADB_DATABASE=${MARIADB_DATABASE}
     volumes:
       - alice-mariadb-data:/var/lib/mysql
+    networks:
+      - alice_default
 
   alice-redis:
     container_name: alice-redis
@@ -35,6 +54,8 @@ services:
     restart: always
     volumes:
       - alice-redis-data:/data
+    networks:
+      - alice_default
 
   alice-qdrant:
     container_name: alice-qdrant
@@ -44,8 +65,16 @@ services:
     restart: always
     volumes:
       - alice-qdrant-storage:/qdrant/storage
+    networks:
+      - alice_default
 
 volumes:
   alice-mariadb-data:
   alice-redis-data:
   alice-qdrant-storage:
+
+networks:
+  alice_default:
+    driver: bridge
+  compose_default:
+    external: true
