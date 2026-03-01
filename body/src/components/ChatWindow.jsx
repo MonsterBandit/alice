@@ -9,9 +9,18 @@ export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSide
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
 
+  // Scroll to bottom when messages change or while sending
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
+
+  // Auto-focus the input whenever messages change (new message received)
+  // or on mount. Skip on mobile to avoid the keyboard popping up unexpectedly.
+  useEffect(() => {
+    if (window.innerWidth > 768) {
+      textareaRef.current?.focus()
+    }
+  }, [messages])
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {

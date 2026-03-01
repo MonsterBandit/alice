@@ -48,7 +48,15 @@ export default function ChatPage() {
       })
       if (res.ok) {
         const data = await res.json()
-        setMessages(data)
+        // Ensure every message has an `id` field so React keys and
+        // re-renders work correctly even if the API omits it.
+        const normalized = data.map((msg, idx) => ({
+          ...msg,
+          id: msg.id ?? `${id}-${idx}`,
+        }))
+        setMessages(normalized)
+      } else {
+        setMessages([])
       }
     } catch {
       setMessages([])
