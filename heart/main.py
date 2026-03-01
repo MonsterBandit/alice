@@ -20,7 +20,7 @@ import anthropic
 # ---------------------------------------------------------------------------
 from tools.executor import run_tool
 from tools.types import ToolRequest
-from tools.registry import list_tools
+from tools.registry import list_tools, ToolFamily
 
 # ---------------------------------------------------------------------------
 # Alice config
@@ -32,7 +32,33 @@ You are proactive, thoughtful, and deeply familiar with the rhythms and needs of
 
 You speak with warmth and clarity. You are direct without being cold. You care about the people you serve and take your role seriously — not as a tool, but as a presence in their lives.
 
-You are Alice. There is only one of you, and you belong to this household."""
+You are Alice. There is only one of you, and you belong to this household.
+
+## Your Memory
+
+You have persistent memory. You MUST use it.
+
+- At the start of any conversation where you don't already have context loaded, call `memory_recall_all` with the user's ID to check what you know about them.
+- When you learn any important fact about a user — their name, relationships, preferences, routines, financial habits, household structure — you MUST immediately call the appropriate memory tool to store it. Do not wait. Do not assume you will remember it later.
+- When you learn about a merchant or financial pattern, call `memory_remember_financial_merchant` to record it.
+- When you learn a household fact (who lives there, what accounts exist, recurring payments), call `memory_remember_household_fact`.
+- When you learn a personal fact about a user, call `memory_remember_user_fact`.
+
+You NEVER claim you don't have memory. You NEVER claim you can't remember things. You have tools for this and you use them.
+
+## Your Tools
+
+You have access to a rich set of tools. You MUST attempt to use them before claiming you cannot do something. Your tool families are:
+
+- **local**: Read files, list directories, search the filesystem, run bash commands, write files
+- **web**: Search the web, fetch URLs, read entire sites
+- **research**: Fetch and search trusted/curated sources
+- **coding**: Developer tools for running and managing code
+- **finance**: Full Firefly III API access — accounts, transactions, budgets, rules, categories
+- **memory**: Persistent memory read/write across sessions (user facts, household facts, financial lexicon)
+- **everyday**: Date/time, reminders, drafting, summarization
+
+You NEVER say "I don't have access to tools" without first attempting to use them. If a tool fails, you report the failure honestly. But you always try."""
 
 MAX_HISTORY = 20
 CONTEXT_WINDOW = 4
@@ -53,6 +79,8 @@ TOOL_KEYWORDS = [
     "account", "transaction", "budget", "balance", "spend", "spent",
     "transfer", "deposit", "withdrawal", "finance", "money", "bank",
     "rule", "category",
+    # Memory keywords
+    "remember", "recall", "know", "memory", "forget", "remind",
 ]
 
 redis_client: redis.Redis = None
@@ -155,6 +183,48 @@ async def lifespan(app: FastAPI):
                 used TINYINT DEFAULT 0
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+                user_id VARCHAR(36) NOT NULL,
+                key_name VARCHAR(255) NOT NULL,
+                value TEXT NOT NULL,
+                category VARCHAR(100) NOT NULL DEFAULT 'general',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_user_key (user_id, key_name)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS financial_lexicon (
+                id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+                user_id VARCHAR(36) NOT NULL,
+                merchant_pattern VARCHAR(255) NOT NULL,
+                canonical_name VARCHAR(255) NOT NULL,
+                category VARCHAR(255),
+                subcategory VARCHAR(255),
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_user_merchant (user_id, merchant_pattern)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS household_facts (
+                id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+                user_id VARCHAR(36) NOT NULL,
+                fact_type VARCHAR(100) NOT NULL,
+                fact_key VARCHAR(255) NOT NULL,
+                fact_value TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_user_fact (user_id, fact_type, fact_key)
+            )
+        """)
+
+    # Wire up the DB getter for memory tools in everyday.py
+    from tools.general import everyday as everyday_module
+    everyday_module.set_db_getter(get_db)
 
     if FIREFLY_URL:
         print(f"[Alice] Firefly III integration enabled: {FIREFLY_URL}")
@@ -341,6 +411,123 @@ def needs_tools(message: str) -> bool:
     lowered = message.lower()
     return any(keyword in lowered for keyword in TOOL_KEYWORDS)
 
+
+def load_user_context(user_id: str) -> str:
+    """Query all memory tables for the given user and return a formatted briefing string.
+
+    Returns an empty string if all tables are empty for this user.
+    """
+    sections = []
+
+    try:
+        db = get_db()
+
+        # --- user_profiles ---
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT key_name, value, category
+                FROM user_profiles
+                WHERE user_id = %s
+                ORDER BY category, key_name
+                """,
+                (user_id,),
+            )
+            profile_rows = cursor.fetchall()
+
+        if profile_rows:
+            # Group by category
+            by_category: dict[str, list[str]] = {}
+            for row in profile_rows:
+                cat = row["category"] or "general"
+                by_category.setdefault(cat, []).append(f"  - {row['key_name']}: {row['value']}")
+            lines = ["### User Profile"]
+            for cat, entries in sorted(by_category.items()):
+                lines.append(f"**{cat.capitalize()}**")
+                lines.extend(entries)
+            sections.append("\n".join(lines))
+
+        # --- household_facts ---
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fact_type, fact_key, fact_value
+                FROM household_facts
+                WHERE user_id = %s
+                ORDER BY fact_type, fact_key
+                """,
+                (user_id,),
+            )
+            household_rows = cursor.fetchall()
+
+        if household_rows:
+            by_type: dict[str, list[str]] = {}
+            for row in household_rows:
+                ftype = row["fact_type"] or "general"
+                by_type.setdefault(ftype, []).append(f"  - {row['fact_key']}: {row['fact_value']}")
+            lines = ["### Household Facts"]
+            for ftype, entries in sorted(by_type.items()):
+                lines.append(f"**{ftype.replace('_', ' ').capitalize()}**")
+                lines.extend(entries)
+            sections.append("\n".join(lines))
+
+        # --- financial_lexicon ---
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT merchant_pattern, canonical_name, category, subcategory, notes
+                FROM financial_lexicon
+                WHERE user_id = %s
+                ORDER BY category, canonical_name
+                """,
+                (user_id,),
+            )
+            lexicon_rows = cursor.fetchall()
+
+        if lexicon_rows:
+            lines = ["### Financial Merchant Lexicon"]
+            for row in lexicon_rows:
+                entry = f"  - `{row['merchant_pattern']}` → {row['canonical_name']}"
+                if row["category"]:
+                    entry += f" [{row['category']}"
+                    if row["subcategory"]:
+                        entry += f" / {row['subcategory']}"
+                    entry += "]"
+                if row["notes"]:
+                    entry += f" — {row['notes']}"
+                lines.append(entry)
+            sections.append("\n".join(lines))
+
+    except Exception as e:
+        # Don't crash the chat request if memory load fails; log and continue
+        print(f"[Alice] Warning: failed to load user context for {user_id}: {e}")
+        return ""
+
+    if not sections:
+        return ""
+
+    return "\n\n".join(sections)
+
+
+def get_tool_awareness() -> str:
+    """Return a formatted string listing all registered tools grouped by family."""
+    by_family: dict[str, list[str]] = {}
+    for tool_def in list_tools():
+        family_name = tool_def.family.value if hasattr(tool_def.family, "value") else str(tool_def.family)
+        by_family.setdefault(family_name, []).append(
+            f"  - **{tool_def.name}**: {tool_def.description}"
+        )
+
+    if not by_family:
+        return ""
+
+    lines = []
+    for family_name in sorted(by_family.keys()):
+        lines.append(f"### {family_name.capitalize()}")
+        lines.extend(by_family[family_name])
+
+    return "\n".join(lines)
+
 # ---------------------------------------------------------------------------
 # Anthropic API call with retry/backoff
 # ---------------------------------------------------------------------------
@@ -386,7 +573,7 @@ def _call_anthropic_with_retry(*, model: str, max_tokens: int, system: str, tool
 # Agentic loop helper
 # ---------------------------------------------------------------------------
 
-def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True) -> str:
+def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True, system_prompt: str = SYSTEM_PROMPT) -> str:
     """
     Run the Claude agentic loop with tool use.
 
@@ -410,7 +597,7 @@ def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True
         result = _call_anthropic_with_retry(
             model="claude-sonnet-4-6",
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             tools=tools,
             messages=messages,
         )
@@ -471,7 +658,7 @@ def _run_agentic_loop(messages: list[dict], user_id: str, use_tools: bool = True
     final_result = _call_anthropic_with_retry(
         model="claude-sonnet-4-6",
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
+        system=system_prompt,
         tools=[],
         messages=messages,
     )
@@ -493,6 +680,16 @@ def health():
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     try:
+        # Build a per-request system prompt that includes user memory and tool awareness
+        user_context = load_user_context(request.user_id)
+        tool_awareness = get_tool_awareness()
+
+        dynamic_system_prompt = SYSTEM_PROMPT
+        if user_context:
+            dynamic_system_prompt += "\n\n## What You Know About This User\n" + user_context
+        if tool_awareness:
+            dynamic_system_prompt += "\n\n## Your Available Tools\n" + tool_awareness
+
         history = load_history(request.user_id)
         messages = history + [{"role": "user", "content": request.message}]
 
@@ -500,6 +697,7 @@ def chat(request: ChatRequest):
             messages,
             user_id=request.user_id,
             use_tools=needs_tools(request.message),
+            system_prompt=dynamic_system_prompt,
         )
 
         save_exchange(request.user_id, request.message, reply)
