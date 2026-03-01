@@ -57,7 +57,7 @@ TOOL_KEYWORDS = [
 
 redis_client: redis.Redis = None
 anthropic_client: anthropic.Anthropic = None
-mariadb_connection: pymysql.connections.Connection = None
+_mariadb_connection: pymysql.connections.Connection = None
 
 
 def _build_anthropic_tools() -> list[dict]:
@@ -85,16 +85,9 @@ def _build_anthropic_tools() -> list[dict]:
 anthropic_tools: list[dict] = _build_anthropic_tools()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global redis_client, anthropic_client, mariadb_connection
-
-    redis_client = redis.Redis(host="alice-redis", port=6379, decode_responses=True)
-    redis_client.ping()
-
-    anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-
-    mariadb_connection = pymysql.connect(
+def _make_mariadb_connection() -> pymysql.connections.Connection:
+    """Create and return a fresh MariaDB connection using the standard parameters."""
+    return pymysql.connect(
         host="alice-mariadb",
         port=3306,
         user="root",
@@ -104,7 +97,37 @@ async def lifespan(app: FastAPI):
         autocommit=True,
     )
 
-    with mariadb_connection.cursor() as cursor:
+
+def get_db() -> pymysql.connections.Connection:
+    """Return a live MariaDB connection, reconnecting automatically if the
+    existing connection has gone stale (e.g. after a long idle period).
+
+    The global _mariadb_connection is pinged first. If the ping fails or the
+    connection is None, a fresh connection is created and stored back into the
+    global so subsequent calls reuse it.
+    """
+    global _mariadb_connection
+    try:
+        if _mariadb_connection is None:
+            raise Exception("No connection yet")
+        _mariadb_connection.ping(reconnect=True)
+    except Exception:
+        _mariadb_connection = _make_mariadb_connection()
+    return _mariadb_connection
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global redis_client, anthropic_client, _mariadb_connection
+
+    redis_client = redis.Redis(host="alice-redis", port=6379, decode_responses=True)
+    redis_client.ping()
+
+    anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    _mariadb_connection = _make_mariadb_connection()
+
+    with get_db().cursor() as cursor:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -141,7 +164,7 @@ async def lifespan(app: FastAPI):
     yield
 
     redis_client.close()
-    mariadb_connection.close()
+    _mariadb_connection.close()
 
 
 app = FastAPI(title="Alice - Heart", lifespan=lifespan)
@@ -256,7 +279,7 @@ def load_history(user_id: str) -> list:
 
     # Redis is empty — seed from MariaDB
     try:
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 """
                 SELECT role, content
@@ -303,7 +326,7 @@ def save_exchange(user_id: str, user_message: str, assistant_message: str):
 
 
 def save_exchange_to_db(user_id: str, user_message: str, assistant_message: str):
-    with mariadb_connection.cursor() as cursor:
+    with get_db().cursor() as cursor:
         cursor.executemany(
             "INSERT INTO conversations (user_id, role, content) VALUES (%s, %s, %s)",
             [
@@ -489,7 +512,7 @@ def chat(request: ChatRequest):
 @app.get("/history/{user_id}", response_model=list[HistoryEntry])
 def get_history(user_id: str):
     try:
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 """
                 SELECT id, user_id, role, content,
@@ -557,7 +580,7 @@ def login(request: LoginRequest):
             )
 
         # Regular DB user
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 "SELECT id, name, email, password_hash FROM users WHERE email = %s",
                 (request.email,),
@@ -602,7 +625,7 @@ def refresh_token(claims: dict = Depends(require_auth)):
 @app.post("/api/auth/invite/accept", response_model=LoginResponse)
 def invite_accept(request: InviteAcceptRequest):
     try:
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 "SELECT token, email, expires_at, used FROM invites WHERE token = %s",
                 (request.token,),
@@ -622,7 +645,7 @@ def invite_accept(request: InviteAcceptRequest):
 
         new_id = str(uuid.uuid4())
 
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 "INSERT INTO users (id, name, email, password_hash) VALUES (%s, %s, %s, %s)",
                 (new_id, request.name, request.email, password_hash),
@@ -647,7 +670,7 @@ def invite_accept(request: InviteAcceptRequest):
 def list_conversations(claims: dict = Depends(require_auth)):
     try:
         user_id = claims["user_id"]
-        with mariadb_connection.cursor() as cursor:
+        with get_db().cursor() as cursor:
             cursor.execute(
                 """
                 SELECT
