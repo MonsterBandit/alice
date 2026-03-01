@@ -680,15 +680,12 @@ def health():
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     try:
-        # Build a per-request system prompt that includes user memory and tool awareness
+        # Build a per-request system prompt that includes user memory
         user_context = load_user_context(request.user_id)
-        tool_awareness = get_tool_awareness()
 
         dynamic_system_prompt = SYSTEM_PROMPT
         if user_context:
             dynamic_system_prompt += "\n\n## What You Know About This User\n" + user_context
-        if tool_awareness:
-            dynamic_system_prompt += "\n\n## Your Available Tools\n" + tool_awareness
 
         history = load_history(request.user_id)
         messages = history + [{"role": "user", "content": request.message}]
