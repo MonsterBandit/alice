@@ -46,6 +46,8 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
       - "web.*"       → tools.general.web.dispatch
       - "local.*"     → tools.general.local.dispatch
       - "everyday.*"  → tools.general.everyday.dispatch
+      - "memory.*"    → tools.general.everyday.dispatch
+                        (memory tools are registered in everyday.py and share its dispatcher)
 
     Within FINANCE:
       - all tools → tools.finance.firefly.dispatch
@@ -63,9 +65,11 @@ def _route_to_family(family: ToolFamily, request: ToolRequest) -> ToolResult:
             return tools.general.local.dispatch(request)
         if request.tool_name.startswith("everyday."):
             return tools.general.everyday.dispatch(request)
+        if request.tool_name.startswith("memory."):
+            return tools.general.everyday.dispatch(request)
         raise NotImplementedError(
             f"No GENERAL handler found for tool '{request.tool_name}'. "
-            "Expected a 'web.*', 'local.*', or 'everyday.*' prefix."
+            "Expected a 'web.*', 'local.*', 'everyday.*', or 'memory.*' prefix."
         )
     elif family == ToolFamily.RESEARCH:
         return tools.research.trusted.dispatch(request)
