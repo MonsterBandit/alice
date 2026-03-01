@@ -3,8 +3,11 @@ import MessageBubble from './MessageBubble.jsx'
 import TypingIndicator from './TypingIndicator.jsx'
 import styles from './ChatWindow.module.css'
 
+// Module-level draft variable — survives re-renders but not full page reloads
+let draftMessage = ''
+
 export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSidebar }) {
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(draftMessage)
   const [sending, setSending] = useState(false)
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
@@ -29,10 +32,17 @@ export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSide
     }
   }
 
+  function handleInputChange(e) {
+    const value = e.target.value
+    draftMessage = value
+    setInput(value)
+  }
+
   async function handleSend() {
     const text = input.trim()
     if (!text || sending) return
     setInput('')
+    draftMessage = ''
     setSending(true)
     try {
       await onSend(text)
@@ -87,7 +97,7 @@ export default function ChatWindow({ messages, onSend, sidebarOpen, onToggleSide
             ref={textareaRef}
             className={styles.textarea}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Message Alice…"
             rows={1}

@@ -4,6 +4,10 @@ const AuthContext = createContext(null)
 
 let cachedUser = null
 
+// Token lifetime is 24 hours; refresh 5 minutes before expiry = 23h55m = 86100000 ms
+const TOKEN_LIFETIME_MS = 86_100_000
+const RETRY_AFTER_FAILURE_MS = 60_000
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null)
   const [user, setUser] = useState(cachedUser)
@@ -16,8 +20,6 @@ export function AuthProvider({ children }) {
 
   const scheduleRefresh = useCallback((delayMs) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-    // Refresh 2 minutes before expiry, minimum 10 seconds
-    const refreshIn = Math.max(delayMs - 2 * 60 * 1000, 10_000)
     refreshTimerRef.current = setTimeout(async () => {
       try {
         const res = await fetch('/api/auth/refresh', {
@@ -28,16 +30,18 @@ export function AuthProvider({ children }) {
           const data = await res.json()
           setToken(data.token)
           if (data.user_id) setUserCached({ id: data.user_id, name: data.name })
-          // Schedule next refresh — assume 15 min token lifetime if not told
-          scheduleRefresh(15 * 60 * 1000)
+          // Schedule the next refresh at 23h55m from now
+          scheduleRefresh(TOKEN_LIFETIME_MS)
         } else {
-          logout()
+          // Refresh failed — retry in 60 seconds, do NOT log the user out
+          scheduleRefresh(RETRY_AFTER_FAILURE_MS)
         }
       } catch {
-        logout()
+        // Network error — retry in 60 seconds, do NOT log the user out
+        scheduleRefresh(RETRY_AFTER_FAILURE_MS)
       }
-    }, refreshIn)
-  }, [])
+    }, delayMs)
+  }, [setUserCached])
 
   const login = useCallback(async (email, password) => {
     const res = await fetch('/api/auth/login', {
@@ -52,7 +56,8 @@ export function AuthProvider({ children }) {
     const data = await res.json()
     setToken(data.token)
     setUserCached({ id: data.user_id, name: data.name })
-    scheduleRefresh(15 * 60 * 1000)
+    // Schedule silent refresh 5 minutes before the 24-hour token expires
+    scheduleRefresh(TOKEN_LIFETIME_MS)
     return data
   }, [scheduleRefresh, setUserCached])
 
@@ -74,7 +79,8 @@ export function AuthProvider({ children }) {
         if (data?.token) {
           setToken(data.token)
           setUserCached({ id: data.user_id, name: data.name })
-          scheduleRefresh(15 * 60 * 1000)
+          // Schedule silent refresh 5 minutes before the 24-hour token expires
+          scheduleRefresh(TOKEN_LIFETIME_MS)
         }
       })
       .catch(() => {})
